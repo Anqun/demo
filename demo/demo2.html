@@ -1,0 +1,45 @@
+ private Cart onPreorderOneCnyPack(Promotion promotion, Cart cart) throws KhwRuntimeException {
+
+        long customerId = cart.getCustomerId();
+        Customer customer = customerId < 0 ? null : customerRepository.findOne(customerId);
+
+        // 请先登录
+        if (customer == null) {
+            throw new KhwUnauthorizedException("[PRE_ORDER_PROMOTION] pls login");
+        }
+
+        // 首单用户可以参加
+        if (customer.getFirstOrderTime() != null) {
+            throw new KhwOverUsedException("[PRE_ORDER_PROMOTION] only new user");
+        }
+
+        List<KhwOrder> orders = khwOrderRepository.findCustomerPromotionOrders(customerId, promotion.getSku());
+
+        // 每个用户仅能参加一次
+        if (orders != null && !orders.isEmpty()) {
+            // 已参加过此活动
+            throw new KhwDuplicateRequestException("[PRE_ORDER_PROMOTION] already attended");
+        }
+
+        // 套餐只能购买一份
+        List<GoodInfo> goodInfos = cart.getGoodInfos();
+        GoodInfo goodInfo = goodInfos.get(0);
+
+        long goodId = goodInfo.getGoodId();
+        Good good = goodRepository.findOne(goodId);
+        if (good == null) {
+            throw new KhwInternalErrorException("[PRE_ORDER_PROMOTION] no such good: id={}", goodId);
+        }
+
+        goodInfo.setQuantity(1);
+        goodInfo.setGoodName(StringTool.formatString("{}##{}", good.getName(), good.getPrice()));
+        goodInfos.set(0, goodInfo);
+        cart.setGoodInfos(goodInfos);
+
+        // 计算金额
+        double totalPrice = imsService.getGoodsTotalAmount(cart.getGoodInfos());
+        cart.setTotalPrice(totalPrice);
+
+        cart.setPromotionSku(promotion.getSku());
+        return cart;
+    }
